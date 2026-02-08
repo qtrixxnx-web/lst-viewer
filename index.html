@@ -1,73 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>LST LIVE VIEW</title>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-<style>
-    body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    #status { position: fixed; top: 10px; font-size: 10px; color: #785a28; letter-spacing: 2px; text-transform: uppercase; }
-    .grid { display: grid; gap: 12px; width: 340px; padding: 25px; border: 2px solid #d4af37; background: #0a0f19; }
-    .row { display: grid; grid-template-columns: 85px 1fr 1fr; align-items: center; gap: 15px; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 8px; }
-    .role-name { font-weight: bold; font-size: 13px; color: #d4af37; }
-    .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; background: #000; overflow: hidden; }
-    .spell img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s; }
-    .spell img[src*="ddragon"] { opacity: 1; } /* Pokazuje tylko gdy link jest poprawny */
-    .spell.cooldown img { filter: grayscale(1) brightness(0.3); }
-    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; pointer-events: none; }
-</style>
+    <meta charset="UTF-8">
+    <title>LST LIVE VIEW</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .grid { display: grid; gap: 12px; width: 340px; padding: 25px; border: 2px solid #d4af37; background: #0a0f19; }
+        .row { display: grid; grid-template-columns: 85px 1fr 1fr; align-items: center; gap: 15px; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 8px; }
+        .role-name { font-weight: bold; font-size: 13px; color: #d4af37; }
+        .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; background: #000; }
+        .spell img { width: 100%; height: 100%; opacity: 0; transition: 0.3s; }
+        .spell img.loaded { opacity: 1; }
+        .spell.cooldown img { filter: grayscale(1) brightness(0.3); }
+        .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; }
+    </style>
 </head>
 <body>
-    <div id="status">ŁĄCZENIE...</div>
+    <div id="status" style="font-size: 10px; margin-bottom: 10px;">LIVE CONNECTED</div>
     <div class="grid" id="view"></div>
+
 <script>
+    // TWOJA KONFIGURACJA FIREBASE (Taka sama jak w aplikacji)
+    const firebaseConfig = {
+        apiKey: "AIzaSyDASOZLhWHQuM08rx4GMma6rBtyuRUTHl4",
+        authDomain: "lst-app-dce64.firebaseapp.com",
+        databaseURL: "https://lst-app-dce64-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "lst-app-dce64",
+        storageBucket: "lst-app-dce64.appspot.com",
+        appId: "1:90593735522:web:c05c22ccdd22643152f81b"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Pobieramy nazwę pokoju z linku (?room=NAZWA)
+    const urlParams = new URLSearchParams(window.location.search);
+    const ROOM_NAME = urlParams.get('room') || "JAKUB_LIVE";
+
     const roles = ["Top", "Jungle", "Mid", "Adc", "Support"];
-    const state = {};
     const view = document.getElementById("view");
 
+    // Tworzymy szkielet strony
     roles.forEach(role => {
-        state[role] = [{time: 0, interval: null}, {time: 0, interval: null}];
         const div = document.createElement("div"); div.className = "row";
         div.innerHTML = `<div class="role-name">${role}</div>` + [0,1].map(i => `
-            <div class="spell" id="${role}-btn-${i}"><img src="" id="${role}-img-${i}"><div class="timer" id="${role}-timer-${i}"></div></div>`).join("");
+            <div class="spell" id="${role}-${i}"><img src=""><div class="timer"></div></div>`).join("");
         view.appendChild(div);
     });
 
-    const peer = new Peer();
-    const targetId = window.location.hash.replace("#", "");
+    // NASŁUCHIWANIE NA ZMIANY W FIREBASE
+    db.ref('rooms/' + ROOM_NAME).on('value', (snapshot) => {
+        const data = snapshot.val();
+        if(!data) return;
 
-    if (targetId) {
-        const conn = peer.connect(targetId);
-        conn.on('open', () => {
-            document.getElementById("status").innerText = "POŁĄCZONO - POBIERANIE DANYCH...";
-            setInterval(() => { if(conn.open) conn.send({type: 'REQ_CONFIG'}); }, 2000); // Co 2 sekundy prosi o stan, jeśli ikonek nie ma
-            conn.send({type: 'REQ_CONFIG'}); 
+        Object.keys(data).forEach(role => {
+            [0,1].forEach(i => {
+                const slotData = data[role][i];
+                if(!slotData) return;
+
+                const btn = document.getElementById(`${role}-${i}`);
+                const img = btn.querySelector("img");
+                const timerTxt = btn.querySelector(".timer");
+
+                // Ustawiamy ikonkę
+                if(img.src !== slotData.icon) {
+                    img.src = slotData.icon;
+                    img.classList.add("loaded");
+                }
+
+                // Obliczamy czas
+                const updateTimer = () => {
+                    const now = Date.now();
+                    const remaining = Math.ceil((slotData.endTime - now) / 1000);
+
+                    if(remaining > 0) {
+                        btn.classList.add("cooldown");
+                        timerTxt.innerText = Math.floor(remaining/60) + ":" + (remaining%60).toString().padStart(2,'0');
+                    } else {
+                        btn.classList.remove("cooldown");
+                        timerTxt.innerText = "";
+                    }
+                };
+                
+                updateTimer();
+                // Odświeżaj timer co sekundę lokalnie
+                if(!btn.dataset.intervalSet) {
+                    setInterval(updateTimer, 1000);
+                    btn.dataset.intervalSet = "true";
+                }
+            });
         });
-        conn.on('data', (data) => {
-            if (data.type === 'INIT') {
-                document.getElementById("status").innerText = "STATUS: LIVE";
-                Object.keys(data.config).forEach(role => {
-                    document.getElementById(`${role}-img-0`).src = data.config[role][0];
-                    document.getElementById(`${role}-img-1`).src = data.config[role][1];
-                });
-            }
-            if (data.type === 'TIMER') {
-                const slot = state[data.role][data.i];
-                const btn = document.getElementById(`${data.role}-btn-${data.i}`);
-                const txt = document.getElementById(`${data.role}-timer-${data.i}`);
-                if (slot.interval) { clearInterval(slot.interval); slot.interval = null; }
-                slot.time = data.time;
-                if (slot.time > 0) {
-                    btn.classList.add("cooldown");
-                    slot.interval = setInterval(() => {
-                        slot.time--;
-                        if (slot.time <= 0) { clearInterval(slot.interval); txt.innerText = ""; btn.classList.remove("cooldown"); }
-                        else { txt.innerText = Math.floor(slot.time/60) + ":" + (slot.time%60).toString().padStart(2,'0'); }
-                    }, 1000);
-                } else { txt.innerText = ""; btn.classList.remove("cooldown"); }
-            }
-        });
-    }
+    });
 </script>
 </body>
 </html>
