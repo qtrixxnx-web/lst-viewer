@@ -5,25 +5,21 @@
 <title>LST LIVE VIEW</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
-    body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+    body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
     #status { position: fixed; top: 10px; font-size: 10px; color: #785a28; letter-spacing: 2px; text-transform: uppercase; }
-    .grid { display: grid; gap: 12px; width: 340px; padding: 25px; background: rgba(10,15,25,0.9); border: 2px solid #d4af37; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
-    .row { display: grid; grid-template-columns: 85px 1fr 1fr; align-items: center; gap: 15px; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 10px; }
-    .role-name { font-weight: bold; font-size: 13px; text-transform: uppercase; color: #d4af37; letter-spacing: 1px; }
+    .grid { display: grid; gap: 12px; width: 340px; padding: 25px; border: 2px solid #d4af37; background: #0a0f19; }
+    .row { display: grid; grid-template-columns: 85px 1fr 1fr; align-items: center; gap: 15px; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 8px; }
+    .role-name { font-weight: bold; font-size: 13px; color: #d4af37; }
     .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; background: #000; }
-    
-    /* POPRAWKA: Ikony są ukryte, dopóki nie dostaną poprawnego adresu URL */
-    .spell img { width: 100%; height: 100%; opacity: 0; transition: opacity 0.3s; }
-    .spell img[src^="http"] { opacity: 1; } 
-    
+    .spell img { width: 100%; height: 100%; display: none; }
+    .spell img[src*="ddragon"] { display: block; }
     .spell.cooldown img { filter: grayscale(1) brightness(0.3); }
-    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; pointer-events: none; }
+    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; }
 </style>
 </head>
 <body>
-    <div id="status">OCZEKIWANIE NA POŁĄCZENIE...</div>
+    <div id="status">ŁĄCZENIE...</div>
     <div class="grid" id="view"></div>
-
 <script>
     const roles = ["Top", "Jungle", "Mid", "Adc", "Support"];
     const state = {};
@@ -33,10 +29,7 @@
         state[role] = [{time: 0, interval: null}, {time: 0, interval: null}];
         const div = document.createElement("div"); div.className = "row";
         div.innerHTML = `<div class="role-name">${role}</div>` + [0,1].map(i => `
-            <div class="spell" id="${role}-btn-${i}">
-                <img src="" id="${role}-img-${i}">
-                <div class="timer" id="${role}-timer-${i}"></div>
-            </div>`).join("");
+            <div class="spell" id="${role}-btn-${i}"><img src="" id="${role}-img-${i}"><div class="timer" id="${role}-timer-${i}"></div></div>`).join("");
         view.appendChild(div);
     });
 
@@ -45,10 +38,13 @@
 
     if (targetId) {
         const conn = peer.connect(targetId);
-        conn.on('open', () => { document.getElementById("status").innerText = "STATUS: POŁĄCZONO"; });
-        
+        conn.on('open', () => {
+            document.getElementById("status").innerText = "POŁĄCZONO - PROSZĘ O DANE...";
+            conn.send({type: 'REQ_CONFIG'}); // ŻĄDANIE IKON OD RAZU PO POŁĄCZENIU
+        });
         conn.on('data', (data) => {
             if (data.type === 'INIT') {
+                document.getElementById("status").innerText = "STATUS: LIVE";
                 Object.keys(data.config).forEach(role => {
                     document.getElementById(`${role}-img-0`).src = data.config[role][0];
                     document.getElementById(`${role}-img-1`).src = data.config[role][1];
@@ -58,26 +54,16 @@
                 const slot = state[data.role][data.i];
                 const btn = document.getElementById(`${data.role}-btn-${data.i}`);
                 const txt = document.getElementById(`${data.role}-timer-${data.i}`);
-
                 if (slot.interval) { clearInterval(slot.interval); slot.interval = null; }
                 slot.time = data.time;
-
                 if (slot.time > 0) {
                     btn.classList.add("cooldown");
                     slot.interval = setInterval(() => {
                         slot.time--;
-                        if (slot.time <= 0) {
-                            clearInterval(slot.interval); slot.interval = null;
-                            txt.innerText = ""; btn.classList.remove("cooldown");
-                        } else {
-                            const m = Math.floor(slot.time / 60);
-                            const s = (slot.time % 60).toString().padStart(2, '0');
-                            txt.innerText = `${m}:${s}`;
-                        }
+                        if (slot.time <= 0) { clearInterval(slot.interval); txt.innerText = ""; btn.classList.remove("cooldown"); }
+                        else { txt.innerText = Math.floor(slot.time/60) + ":" + (slot.time%60).toString().padStart(2,'0'); }
                     }, 1000);
-                } else {
-                    txt.innerText = ""; btn.classList.remove("cooldown");
-                }
+                } else { txt.innerText = ""; btn.classList.remove("cooldown"); }
             }
         });
     }
