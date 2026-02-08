@@ -5,20 +5,19 @@
 <title>LST LIVE VIEW</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
-    body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    #status { margin-bottom: 20px; font-size: 12px; letter-spacing: 2px; color: #785a28; }
-    .grid { display: grid; gap: 15px; width: 300px; }
-    .row { display: grid; grid-template-columns: 80px 1fr 1fr; align-items: center; gap: 10px; border-bottom: 1px solid #1e2328; padding-bottom: 10px; }
-    .role-name { font-weight: bold; font-size: 14px; text-transform: uppercase; }
-    .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; justify-self: center; }
+    body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+    #status { position: fixed; top: 10px; font-size: 10px; color: #785a28; letter-spacing: 2px; }
+    .grid { display: grid; gap: 12px; width: 320px; padding: 20px; background: rgba(10,15,25,0.8); border: 1px solid #d4af37; }
+    .row { display: grid; grid-template-columns: 80px 1fr 1fr; align-items: center; gap: 10px; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 8px; }
+    .role-name { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #d4af37; }
+    .spell { width: 45px; height: 45px; border: 1px solid #785a28; position: relative; }
     .spell img { width: 100%; height: 100%; }
     .spell.cooldown img { filter: grayscale(1) brightness(0.3); }
-    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; }
+    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 16px; text-shadow: 2px 2px #000; }
 </style>
 </head>
 <body>
-    <div id="status">Łączenie...</div>
-    <h2 style="letter-spacing: 5px;">LIVE VIEW</h2>
+    <div id="status">OCZEKIWANIE NA POŁĄCZENIE...</div>
     <div class="grid" id="view"></div>
 
 <script>
@@ -26,7 +25,6 @@
     const state = {};
     const view = document.getElementById("view");
 
-    // Budowanie UI
     roles.forEach(role => {
         state[role] = [{time: 0, interval: null}, {time: 0, interval: null}];
         const div = document.createElement("div"); div.className = "row";
@@ -43,7 +41,7 @@
 
     if (targetId) {
         const conn = peer.connect(targetId);
-        conn.on('open', () => { document.getElementById("status").innerText = "POŁĄCZONO"; });
+        conn.on('open', () => { document.getElementById("status").innerText = "STATUS: POŁĄCZONO"; });
         conn.on('data', (data) => {
             if (data.type === 'INIT') {
                 Object.keys(data.config).forEach(role => {
@@ -53,13 +51,13 @@
             }
             if (data.type === 'TIMER') {
                 const slot = state[data.role][data.i];
-                
-                // --- KLUCZOWA POPRAWKA: ZAWSZE CZYŚCIMY STARY LICZNIK ---
-                if (slot.interval) clearInterval(slot.interval);
-                
-                slot.time = data.time;
                 const btn = document.getElementById(`${data.role}-btn-${data.i}`);
                 const txt = document.getElementById(`${data.role}-timer-${data.i}`);
+
+                // TWARDE CZYSZCZENIE STAREGO LICZNIKA
+                if (slot.interval) { clearInterval(slot.interval); slot.interval = null; }
+                
+                slot.time = data.time;
 
                 if (slot.time > 0) {
                     btn.classList.add("cooldown");
@@ -67,6 +65,7 @@
                         slot.time--;
                         if (slot.time <= 0) {
                             clearInterval(slot.interval);
+                            slot.interval = null;
                             txt.innerText = "";
                             btn.classList.remove("cooldown");
                         } else {
@@ -76,14 +75,12 @@
                         }
                     }, 1000);
                 } else {
-                    // Jeśli otrzymano 0, czyścimy UI
+                    // RESET WIDOKU
                     txt.innerText = "";
                     btn.classList.remove("cooldown");
                 }
             }
         });
-    } else {
-        document.getElementById("status").innerText = "BRAK ID W LINKU";
     }
 </script>
 </body>
