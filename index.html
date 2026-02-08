@@ -10,11 +10,11 @@
     .grid { display: grid; gap: 12px; width: 340px; padding: 25px; border: 2px solid #d4af37; background: #0a0f19; }
     .row { display: grid; grid-template-columns: 85px 1fr 1fr; align-items: center; gap: 15px; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 8px; }
     .role-name { font-weight: bold; font-size: 13px; color: #d4af37; }
-    .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; background: #000; }
-    .spell img { width: 100%; height: 100%; display: none; }
-    .spell img[src*="ddragon"] { display: block; }
+    .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; background: #000; overflow: hidden; }
+    .spell img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s; }
+    .spell img[src*="ddragon"] { opacity: 1; } /* Pokazuje tylko gdy link jest poprawny */
     .spell.cooldown img { filter: grayscale(1) brightness(0.3); }
-    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; }
+    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -39,8 +39,9 @@
     if (targetId) {
         const conn = peer.connect(targetId);
         conn.on('open', () => {
-            document.getElementById("status").innerText = "POŁĄCZONO - PROSZĘ O DANE...";
-            conn.send({type: 'REQ_CONFIG'}); // ŻĄDANIE IKON OD RAZU PO POŁĄCZENIU
+            document.getElementById("status").innerText = "POŁĄCZONO - POBIERANIE DANYCH...";
+            setInterval(() => { if(conn.open) conn.send({type: 'REQ_CONFIG'}); }, 2000); // Co 2 sekundy prosi o stan, jeśli ikonek nie ma
+            conn.send({type: 'REQ_CONFIG'}); 
         });
         conn.on('data', (data) => {
             if (data.type === 'INIT') {
