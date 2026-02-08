@@ -1,54 +1,90 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>LST Viewer</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <style>
-        body { background: #010a13; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-        .row { display: grid; grid-template-columns: 100px 60px 60px; gap: 20px; align-items: center; padding: 10px; border-bottom: 1px solid #785a28; }
-        .spell { width: 50px; height: 50px; border: 2px solid #785a28; position: relative; }
-        .spell img { width: 100%; height: 100%; }
-        .cooldown { filter: grayscale(1) brightness(0.3); }
-        .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; color: white; text-shadow: 2px 2px #000; }
-    </style>
+<meta charset="UTF-8">
+<title>LST LIVE VIEW</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+    body { background: #050a12; color: #cdbe91; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    #status { margin-bottom: 20px; font-size: 12px; letter-spacing: 2px; color: #785a28; }
+    .grid { display: grid; gap: 15px; width: 300px; }
+    .row { display: grid; grid-template-columns: 80px 1fr 1fr; align-items: center; gap: 10px; border-bottom: 1px solid #1e2328; padding-bottom: 10px; }
+    .role-name { font-weight: bold; font-size: 14px; text-transform: uppercase; }
+    .spell { width: 50px; height: 50px; border: 1px solid #785a28; position: relative; justify-self: center; }
+    .spell img { width: 100%; height: 100%; }
+    .spell.cooldown img { filter: grayscale(1) brightness(0.3); }
+    .timer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 2px 2px #000; }
+</style>
 </head>
 <body>
-    <h2 id="status">Łączenie...</h2>
-    <div id="viewer"></div>
+    <div id="status">Łączenie...</div>
+    <h2 style="letter-spacing: 5px;">LIVE VIEW</h2>
+    <div class="grid" id="view"></div>
 
-    <script>
-        const peer = new Peer();
-        const hostId = window.location.hash.substring(1);
-        
-        peer.on('open', () => {
-            const conn = peer.connect(hostId);
-            conn.on('open', () => { document.getElementById('status').innerText = "LIVE VIEW"; });
-            conn.on('data', data => {
-                if(data.type === 'INIT') render(data.config);
-                if(data.type === 'TIMER') startTimer(data);
-            });
+<script>
+    const roles = ["Top", "Jungle", "Mid", "Adc", "Support"];
+    const state = {};
+    const view = document.getElementById("view");
+
+    // Budowanie UI
+    roles.forEach(role => {
+        state[role] = [{time: 0, interval: null}, {time: 0, interval: null}];
+        const div = document.createElement("div"); div.className = "row";
+        div.innerHTML = `<div class="role-name">${role}</div>` + [0,1].map(i => `
+            <div class="spell" id="${role}-btn-${i}">
+                <img src="" id="${role}-img-${i}">
+                <div class="timer" id="${role}-timer-${i}"></div>
+            </div>`).join("");
+        view.appendChild(div);
+    });
+
+    const peer = new Peer();
+    const targetId = window.location.hash.replace("#", "");
+
+    if (targetId) {
+        const conn = peer.connect(targetId);
+        conn.on('open', () => { document.getElementById("status").innerText = "POŁĄCZONO"; });
+        conn.on('data', (data) => {
+            if (data.type === 'INIT') {
+                Object.keys(data.config).forEach(role => {
+                    document.getElementById(`${role}-img-0`).src = data.config[role][0];
+                    document.getElementById(`${role}-img-1`).src = data.config[role][1];
+                });
+            }
+            if (data.type === 'TIMER') {
+                const slot = state[data.role][data.i];
+                
+                // --- KLUCZOWA POPRAWKA: ZAWSZE CZYŚCIMY STARY LICZNIK ---
+                if (slot.interval) clearInterval(slot.interval);
+                
+                slot.time = data.time;
+                const btn = document.getElementById(`${data.role}-btn-${data.i}`);
+                const txt = document.getElementById(`${data.role}-timer-${data.i}`);
+
+                if (slot.time > 0) {
+                    btn.classList.add("cooldown");
+                    slot.interval = setInterval(() => {
+                        slot.time--;
+                        if (slot.time <= 0) {
+                            clearInterval(slot.interval);
+                            txt.innerText = "";
+                            btn.classList.remove("cooldown");
+                        } else {
+                            const m = Math.floor(slot.time / 60);
+                            const s = (slot.time % 60).toString().padStart(2, '0');
+                            txt.innerText = `${m}:${s}`;
+                        }
+                    }, 1000);
+                } else {
+                    // Jeśli otrzymano 0, czyścimy UI
+                    txt.innerText = "";
+                    btn.classList.remove("cooldown");
+                }
+            }
         });
-
-        function render(cfg) {
-            document.getElementById('viewer').innerHTML = Object.keys(cfg).map(role => `
-                <div class="row">
-                    <div>${role}</div>
-                    <div class="spell" id="${role}-0"><img src="${cfg[role][0]}"><div class="timer"></div></div>
-                    <div class="spell" id="${role}-1"><img src="${cfg[role][1]}"><div class="timer"></div></div>
-                </div>
-            `).join('');
-        }
-
-        function startTimer({role, i, time}) {
-            let timeLeft = time;
-            const el = document.getElementById(`${role}-${i}`);
-            el.classList.add('cooldown');
-            const itv = setInterval(() => {
-                timeLeft--;
-                el.querySelector('.timer').innerText = timeLeft > 0 ? timeLeft : "";
-                if(timeLeft <= 0) { clearInterval(itv); el.classList.remove('cooldown'); }
-            }, 1000);
-        }
-    </script>
+    } else {
+        document.getElementById("status").innerText = "BRAK ID W LINKU";
+    }
+</script>
 </body>
 </html>
